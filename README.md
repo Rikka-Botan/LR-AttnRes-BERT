@@ -1,3 +1,5 @@
+<img width="2000" height="1125" alt="image" src="https://github.com/user-attachments/assets/cf7b1b67-51ff-4c05-8dbc-27fffbb69302" />
+
 # LR-AttnRes-BERT
 
 A BERT-style masked-language-model encoder built from deliberately plain layers —
