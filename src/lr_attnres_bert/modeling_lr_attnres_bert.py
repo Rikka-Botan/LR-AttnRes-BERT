@@ -100,6 +100,21 @@ def apply_rotary(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch
 # Layer
 # ---------------------------------------------------------------------------
 
+class LRAttnResBertRMSNorm(nn.RMSNorm):
+    """``nn.RMSNorm`` whose gain follows the input's dtype.
+
+    Under autocast the weights stay fp32 while e.g. the prediction head's input is
+    bf16; ``rms_norm`` is not on autocast's fp32 list, so a plain ``nn.RMSNorm``
+    then warns and falls back to an unfused implementation. Casting the gain keeps
+    the fused kernel (which accumulates in fp32 either way); in pure bf16 / fp32
+    inference the cast is a no-op.
+    """
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        weight = None if self.weight is None else self.weight.to(x.dtype)
+        return F.rms_norm(x, self.normalized_shape, weight, self.eps)
+
+
 class LRAttnResBertAttention(nn.Module):
     """Bidirectional grouped-query attention with rotary positions (SDPA)."""
 
@@ -164,9 +179,9 @@ class LRAttnResBertLayer(nn.Module):
     def __init__(self, config: LRAttnResBertConfig, layer_idx: int):
         super().__init__()
         eps = config.norm_eps
-        self.attn_norm = nn.RMSNorm(config.hidden_size, eps=eps)
+        self.attn_norm = LRAttnResBertRMSNorm(config.hidden_size, eps=eps)
         self.attn = LRAttnResBertAttention(config)
-        self.mlp_norm = nn.RMSNorm(config.hidden_size, eps=eps)
+        self.mlp_norm = LRAttnResBertRMSNorm(config.hidden_size, eps=eps)
         self.mlp = LRAttnResBertMLP(config)
         rank = min(config.attnres_rank, config.hidden_size)
         # The first attention read sees the embedding alone: nothing to route.
@@ -313,7 +328,7 @@ class LRAttnResBertModel(LRAttnResBertPreTrainedModel):
         self.embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
         self.layers = nn.ModuleList(
             [LRAttnResBertLayer(config, i) for i in range(config.num_hidden_layers)])
-        self.final_norm = nn.RMSNorm(config.hidden_size, eps=config.norm_eps)
+        self.final_norm = LRAttnResBertRMSNorm(config.hidden_size, eps=config.norm_eps)
         self.rotary = LRAttnResBertRotaryEmbedding(
             config.hidden_size // config.num_attention_heads, config.rope_theta)
         rank = min(config.attnres_rank, config.hidden_size)
@@ -403,7 +418,7 @@ class LRAttnResBertPredictionHead(nn.Module):
     def __init__(self, config: LRAttnResBertConfig):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
-        self.norm = nn.RMSNorm(config.hidden_size, eps=config.norm_eps)
+        self.norm = LRAttnResBertRMSNorm(config.hidden_size, eps=config.norm_eps)
 
     def forward(self, x):
         return self.norm(F.gelu(self.dense(x)))
