@@ -11,6 +11,17 @@ except ImportError:  # pragma: no cover - newer alias
 ATTNRES_READ_SITES = ("attention", "all")
 CLASSIFIER_POOLINGS = ("mean", "cls")
 
+# Written into every saved config.json, so a checkpoint saved from any one head loads
+# through all of them with ``trust_remote_code=True`` (``save_pretrained`` alone only
+# records the class that was saved).
+AUTO_MAP = {
+    "AutoConfig": "configuration_lr_attnres_bert.LRAttnResBertConfig",
+    "AutoModel": "modeling_lr_attnres_bert.LRAttnResBertModel",
+    "AutoModelForMaskedLM": "modeling_lr_attnres_bert.LRAttnResBertForMaskedLM",
+    "AutoModelForSequenceClassification":
+        "modeling_lr_attnres_bert.LRAttnResBertForSequenceClassification",
+}
+
 # Named sizes (overrides on top of the defaults, which are "base").
 #   base  22 layers x 768, 12 / 4 heads, MLP 2304, rank 128   ~151.8 M (ModernBERT-base scale)
 #   tiny   8 layers x 384,  6 / 2 heads, MLP 1152, rank  64    ~29.9 M (same ratios: MLP 3x,
@@ -107,6 +118,7 @@ class LRAttnResBertConfig(PretrainedConfig):
         self.cls_token_id = cls_token_id
         self.sep_token_id = sep_token_id
         self.mask_token_id = mask_token_id
+        kwargs["auto_map"] = {**AUTO_MAP, **(kwargs.get("auto_map") or {})}
         super().__init__(
             pad_token_id=pad_token_id,
             bos_token_id=bos_token_id,
@@ -123,4 +135,5 @@ class LRAttnResBertConfig(PretrainedConfig):
         return cls(**{**PRESETS[name], **overrides})
 
 
-__all__ = ["LRAttnResBertConfig", "ATTNRES_READ_SITES", "CLASSIFIER_POOLINGS", "PRESETS"]
+__all__ = ["LRAttnResBertConfig", "ATTNRES_READ_SITES", "CLASSIFIER_POOLINGS", "PRESETS",
+           "AUTO_MAP"]
